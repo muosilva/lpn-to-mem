@@ -1,0 +1,6 @@
+PROGRAMA "ExprMult":
+INICIO
+a = 12
+b = 2
+RES = a + b
+FIM
