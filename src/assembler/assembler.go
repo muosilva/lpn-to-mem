@@ -1,4 +1,3 @@
-// File: src/assembler/assembler.go
 package assembler
 
 import (
@@ -10,10 +9,10 @@ import (
 )
 
 const (
-	HeaderSize = 4                // bytes de cabeçalho ("NDR")
+	HeaderSize = 4                // bytes de cabeçalho
 	MemorySize = HeaderSize + 256 // total: header + 256 bytes
-	DataStart  = 0x80             // onde começa a seção de dados
-	// opcodes
+	DataStart  = 0x80             // início da seção de dados
+
 	OPCODE_NOP = 0x00
 	OPCODE_STA = 0x10
 	OPCODE_LDA = 0x20
@@ -26,9 +25,11 @@ const (
 	OPCODE_JN  = 0x90
 	OPCODE_JZ  = 0xA0
 	OPCODE_HLT = 0xF0
+	OPCODE_MUL = 0xB0
+	OPCODE_DIV = 0xC0
 )
 
-// Assemble monta um .asm em um .mem com instruções de 2 bytes.
+// Assemble monta um .asm em um .mem com suporte a labels e opcodes MUL/DIV
 func Assemble(inputPath, outputPath string) error {
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -36,8 +37,9 @@ func Assemble(inputPath, outputPath string) error {
 	}
 	lines := strings.Split(string(data), "\n")
 
-	// --- PASSO 1: coleta símbolos da seção .DATA ---
+	// PASSO 1: coleta símbolos de DATA
 	sym := map[string]int{}
+	dataVals := map[string]byte{}
 	addrData := DataStart
 	mode := ""
 	for _, raw := range lines {
@@ -57,53 +59,27 @@ func Assemble(inputPath, outputPath string) error {
 		if mode == "data" {
 			parts := strings.Fields(line)
 			if len(parts) >= 3 && strings.ToUpper(parts[1]) == "DB" {
-				// nome DB valor
-				name, valStr := parts[0], parts[2]
-				val := 0
+				name := parts[0]
+				valStr := parts[2]
+				val := byte(0)
 				if valStr != "?" {
-					if v, e := strconv.Atoi(valStr); e == nil {
-						val = v
-					} else if v2, e2 := strconv.ParseInt(valStr, 0, 0); e2 == nil {
-						val = int(v2)
-					} else {
-						return fmt.Errorf("valor inválido '%s': %w", valStr, e2)
+					if v, err := strconv.Atoi(valStr); err == nil {
+						val = byte(v)
+					} else if v2, err2 := strconv.ParseInt(valStr, 0, 0); err2 == nil {
+						val = byte(v2)
 					}
 				}
-				_ = val
 				sym[name] = addrData
+				dataVals[name] = val
 				addrData++
 			}
 		}
 	}
 
-	// --- PASSO 2: gera memória com duas passagens ---
-	mem := make([]byte, MemorySize)
-	// cabeçalho Neander
-	copy(mem[:HeaderSize], []byte{0x03, 'N', 'D', 'R'})
-
-	// primeiro, grava valores iniciais de DATA
-	for k, addr := range sym {
-		// leitura repetida de arquivo para pegar o valor DB
-		// (poderia armazenar no passo 1, mas para simplificar:)
-		for _, raw := range lines {
-			if strings.HasPrefix(strings.TrimSpace(raw), k+" DB") {
-				parts := strings.Fields(raw)
-				valStr := parts[2]
-				v := 0
-				if valStr != "?" {
-					if x, _ := strconv.Atoi(valStr); true {
-						v = x
-					}
-				}
-				mem[HeaderSize+addr] = byte(v)
-				break
-			}
-		}
-	}
-
-	// agora monta código
-	mode = ""
+	// PASSO 1.5: coleta labels em CODE
+	labels := map[string]int{}
 	pc := 0
+	mode = ""
 	for _, raw := range lines {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, ";") {
@@ -121,18 +97,76 @@ func Assemble(inputPath, outputPath string) error {
 		if mode != "code" {
 			continue
 		}
-		// .ORG
 		if strings.HasPrefix(up, ".ORG") {
 			f := strings.Fields(line)
 			if len(f) == 2 {
-				if o, e := strconv.ParseInt(f[1], 0, 0); e == nil {
+				if o, err := strconv.ParseInt(f[1], 0, 0); err == nil {
 					pc = int(o)
 				}
 			}
 			continue
 		}
-
 		parts := strings.Fields(line)
+		if len(parts) > 0 && strings.HasSuffix(parts[0], ":") {
+			lbl := strings.TrimSuffix(parts[0], ":")
+			labels[lbl] = pc
+			continue
+		}
+		if len(parts) == 1 {
+			pc++
+		} else {
+			pc += 2
+		}
+	}
+	// mescla labels em sym
+	for lbl, addr := range labels {
+		sym[lbl] = addr
+	}
+
+	// PASSO 2: gera memória
+	mem := make([]byte, MemorySize)
+	copy(mem[:HeaderSize], []byte{0x03, 'N', 'D', 'R'})
+
+	// grava valores iniciais de DATA
+	for name, addr := range sym {
+		if val, ok := dataVals[name]; ok {
+			mem[HeaderSize+addr] = val
+		}
+	}
+
+	// gera código
+	mode = ""
+	pc = 0
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, ";") {
+			continue
+		}
+		up := strings.ToUpper(line)
+		switch {
+		case strings.HasPrefix(up, ".DATA"):
+			mode = ""
+			continue
+		case strings.HasPrefix(up, ".CODE"):
+			mode = "code"
+			continue
+		}
+		if mode != "code" {
+			continue
+		}
+		if strings.HasPrefix(up, ".ORG") {
+			f := strings.Fields(line)
+			if len(f) == 2 {
+				if o, err := strconv.ParseInt(f[1], 0, 0); err == nil {
+					pc = int(o)
+				}
+			}
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) > 0 && strings.HasSuffix(parts[0], ":") {
+			continue // ignora labels
+		}
 		op := strings.ToUpper(parts[0])
 		var code byte
 		switch op {
@@ -160,12 +194,15 @@ func Assemble(inputPath, outputPath string) error {
 			code = OPCODE_JZ
 		case "HLT":
 			code = OPCODE_HLT
+		case "MUL":
+			code = OPCODE_MUL
+		case "DIV":
+			code = OPCODE_DIV
 		default:
 			return fmt.Errorf("opcode desconhecido '%s'", op)
 		}
 
 		base := HeaderSize + pc
-		// instrução com operando
 		if len(parts) == 2 {
 			addr, ok := sym[parts[1]]
 			if !ok {
@@ -176,7 +213,6 @@ func Assemble(inputPath, outputPath string) error {
 			mem[HeaderSize+pc] = byte(addr)
 			pc++
 		} else {
-			// apenas opcode
 			mem[base] = code
 			pc++
 		}

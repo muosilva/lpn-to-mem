@@ -10,56 +10,7 @@ import (
 	"strings"
 )
 
-// TokenType defines types of tokens in .lpn language
-type TokenType int
-
-const (
-	TOKEN_EOF TokenType = iota
-	TOKEN_IDENTIFIER
-	TOKEN_NUMBER
-	TOKEN_ASSIGN    // =
-	TOKEN_PLUS      // +
-	TOKEN_MINUS     // -
-	TOKEN_MULT      // *
-	TOKEN_DIV       // /
-	TOKEN_LPAREN    // (
-	TOKEN_RPAREN    // )
-	TOKEN_SEMICOLON // ;
-	TOKEN_INICIO    // INICIO
-	TOKEN_FIM       // FIM
-	TOKEN_PROGRAMA  // PROGRAMA
-	TOKEN_QUOTE     // "
-	TOKEN_COLON     // :
-)
-
-type Token struct {
-	Type   TokenType
-	Lexeme string
-}
-
-type ASTNode interface{}
-
-type NumberNode struct{ Value int }
-
-type VarNode struct{ Name string }
-
-type BinOpNode struct {
-	Op    TokenType
-	Left  ASTNode
-	Right ASTNode
-}
-
-type Statement struct {
-	VarName string
-	Expr    ASTNode
-}
-
-type Program struct {
-	Name       string
-	Statements []*Statement
-	Result     ASTNode
-}
-
+// Compile lê um .lpn, suporta + - * / e gera .asm com MUL/DIV
 func Compile(inputPath, outputPath string) error {
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -69,7 +20,7 @@ func Compile(inputPath, outputPath string) error {
 
 	reProg := regexp.MustCompile(`^PROGRAMA\s+"(.+)"[:]?`)
 	reAssignLit := regexp.MustCompile(`^(\w+)\s*=\s*(\d+)\s*$`)
-	reAssignBin := regexp.MustCompile(`^(\w+)\s*=\s*(\w+)\s*([\+\-])\s*(\w+)\s*$`)
+	reAssignBin := regexp.MustCompile(`^(\w+)\s*=\s*(\w+)\s*([\+\-\*/])\s*(\w+)\s*$`)
 
 	type litAssign struct {
 		varName string
@@ -85,7 +36,7 @@ func Compile(inputPath, outputPath string) error {
 		if line == "" || line == "INICIO" || line == "FIM" {
 			continue
 		}
-		if m := reProg.FindStringSubmatch(line); m != nil {
+		if reProg.MatchString(line) {
 			continue
 		}
 		if m := reAssignLit.FindStringSubmatch(line); m != nil {
@@ -96,16 +47,14 @@ func Compile(inputPath, outputPath string) error {
 			continue
 		}
 		if m := reAssignBin.FindStringSubmatch(line); m != nil {
-			r, l, o, ri := m[1], m[2], m[3], m[4]
-			bins = append(bins, binAssign{r, l, o, ri})
-			vars[l] = struct{}{}
-			vars[ri] = struct{}{}
-			vars[r] = struct{}{}
+			bins = append(bins, binAssign{m[1], m[2], m[3], m[4]})
+			vars[m[2]] = struct{}{}
+			vars[m[4]] = struct{}{}
+			vars[m[1]] = struct{}{}
 			continue
 		}
 	}
 
-	// Garante diretório de saída
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
 		return fmt.Errorf("falha ao criar pasta para %s: %w", outputPath, err)
 	}
@@ -116,9 +65,8 @@ func Compile(inputPath, outputPath string) error {
 	defer f.Close()
 	bw := bufio.NewWriter(f)
 
-	// Seção DATA
+	// .DATA
 	fmt.Fprintln(bw, ".DATA")
-	// constantes únicas
 	seen := map[int]struct{}{}
 	for _, L := range lits {
 		if _, ok := seen[L.val]; !ok {
@@ -131,21 +79,24 @@ func Compile(inputPath, outputPath string) error {
 	}
 	fmt.Fprintln(bw)
 
-	// Seção CODE
+	// .CODE
 	fmt.Fprintln(bw, ".CODE")
 	fmt.Fprintln(bw, ".ORG 0")
-	// atribuições literais
 	for _, L := range lits {
 		fmt.Fprintf(bw, "LDA CONST_%d\n", L.val)
 		fmt.Fprintf(bw, "STA %s\n", L.varName)
 	}
-	// atribuições binárias
 	for _, B := range bins {
 		fmt.Fprintf(bw, "LDA %s\n", B.left)
-		if B.op == "+" {
+		switch B.op {
+		case "+":
 			fmt.Fprintf(bw, "ADD %s\n", B.right)
-		} else {
+		case "-":
 			fmt.Fprintf(bw, "SUB %s\n", B.right)
+		case "*":
+			fmt.Fprintf(bw, "MUL %s\n", B.right)
+		case "/":
+			fmt.Fprintf(bw, "DIV %s\n", B.right)
 		}
 		fmt.Fprintf(bw, "STA %s\n", B.res)
 	}

@@ -1,4 +1,3 @@
-// File: src/emulator/emulator.go
 package emulator
 
 import (
@@ -7,8 +6,8 @@ import (
 )
 
 const (
-	HeaderSize = 4   // pula 4 bytes de header
-	DataSize   = 256 // memória útil
+	HeaderSize = 4
+	DataSize   = 256
 
 	OPCODE_NOP = 0x00
 	OPCODE_STA = 0x10
@@ -22,12 +21,14 @@ const (
 	OPCODE_JN  = 0x90
 	OPCODE_JZ  = 0xA0
 	OPCODE_HLT = 0xF0
+	OPCODE_MUL = 0xB0
+	OPCODE_DIV = 0xC0
 )
 
 type CPU struct {
-	AC  byte   // acumulador
-	PC  byte   // contador de programa
-	Mem []byte // 256 bytes
+	AC  byte
+	PC  byte
+	Mem []byte
 }
 
 func (c *CPU) Load(path string) error {
@@ -81,6 +82,14 @@ func (c *CPU) Run() {
 				if c.AC == 0 {
 					c.PC = operand
 					continue
+				}
+			case OPCODE_MUL:
+				c.AC *= c.Mem[operand]
+			case OPCODE_DIV:
+				if c.Mem[operand] != 0 {
+					c.AC /= c.Mem[operand]
+				} else {
+					fmt.Println("divisão por zero")
 				}
 			default:
 				fmt.Printf("opcode desconhecido 0x%X em PC=0x%X\n", instr, c.PC)

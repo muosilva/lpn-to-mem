@@ -3,12 +3,13 @@ package main
 import (
 	"fmt"
 	"log"
-	"module/src/assembler"
-	"module/src/compiler"
-	"module/src/emulator"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/muosilva/lpn-to-mem/src/assembler"
+	"github.com/muosilva/lpn-to-mem/src/compiler"
+	"github.com/muosilva/lpn-to-mem/src/emulator"
 )
 
 func main() {
