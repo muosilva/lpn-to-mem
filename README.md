@@ -1,5 +1,7 @@
 # lpn-to-mem
 
+## Aluno: Murilo Oliveira
+
 Sistema compilador, montador e emulador que converte programas LPN (linguagem de programação simples) em código assembly e os executa em uma máquina virtual.
 
 ## Visão Geral
