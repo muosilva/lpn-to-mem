@@ -29,7 +29,7 @@ const (
 	OPCODE_DIV = 0xC0
 )
 
-// Assemble monta um .asm em um .mem com suporte a labels e opcodes MUL/DIV
+// Assemble monta um .asm em um .mem com suporte a labels e opcodes
 func Assemble(inputPath, outputPath string) error {
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -37,7 +37,7 @@ func Assemble(inputPath, outputPath string) error {
 	}
 	lines := strings.Split(string(data), "\n")
 
-	// PASSO 1: coleta símbolos de DATA
+	//coleta símbolos de DATA
 	sym := map[string]int{}
 	dataVals := map[string]byte{}
 	addrData := DataStart
@@ -76,7 +76,7 @@ func Assemble(inputPath, outputPath string) error {
 		}
 	}
 
-	// PASSO 1.5: coleta labels em CODE
+	//coleta labels em CODE
 	labels := map[string]int{}
 	pc := 0
 	mode = ""
@@ -123,18 +123,15 @@ func Assemble(inputPath, outputPath string) error {
 		sym[lbl] = addr
 	}
 
-	// PASSO 2: gera memória
 	mem := make([]byte, MemorySize)
 	copy(mem[:HeaderSize], []byte{0x03, 'N', 'D', 'R'})
 
-	// grava valores iniciais de DATA
 	for name, addr := range sym {
 		if val, ok := dataVals[name]; ok {
 			mem[HeaderSize+addr] = val
 		}
 	}
 
-	// gera código
 	mode = ""
 	pc = 0
 	for _, raw := range lines {

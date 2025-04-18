@@ -1,6 +1,8 @@
-PROGRAMA "ExprMult":
+PROGRAMA "Soma":
 INICIO
 a = 12
 b = 2
-RES = a + b
+c = a + b
+d = 6
+RES = c + d
 FIM

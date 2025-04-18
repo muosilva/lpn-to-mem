@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Compile lê um .lpn, suporta + - * / e gera .asm com MUL/DIV
+// Compile lê um .lpn e gera .asm
 func Compile(inputPath, outputPath string) error {
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
